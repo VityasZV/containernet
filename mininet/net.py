@@ -301,6 +301,33 @@ class Mininet( object ):
         self.nameToNode[ name ] = sw
         return sw
 
+    def addServiceFunctionForwarder( self, name, cls=None, **params ):
+        """Add ServiceFunctionForwarder - just a real Switch for now
+               name: name of switch to add
+               cls: custom switch class/constructor (optional)
+               returns: added switch
+               side effect: increments listenPort ivar ."""
+        return self.addSwitch(name, cls, **params)
+
+    def addVirtualNetworkFunction( self, name, cls=None, custom_function=None, **params):
+        """Add VirtualNetworkFunction
+                name: name of function to add
+                cls: one of basic functions, for example:
+                    Switching: BNG, CG-NAT, routers.
+                    Tunnelling gateway elements: IPSec/SSL VPN gateways.
+                    Traffic analysis: DPI, QoE measurementI.
+                    Signalling: SBCs, IMS.
+                    Application-level optimisation: CDNs, load Balancers.
+                    Home routers and set top boxes.
+                    Mobile network nodes: HLR/HSS, MME, SGSN, GGSN/PDN-GW, RNC.
+                    Network-wide functions: AAA servers policy control, charging platforms.
+                    Security functions: firewalls, intrusion detection systems, virus scanners, spam protection.
+                custom_function: function, that's not presented in basic functions
+                params: parameters for function
+        """
+
+        return None
+
     def delSwitch( self, switch ):
         "Delete a switch"
         self.delNode( switch, nodes=self.switches )

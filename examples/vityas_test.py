@@ -25,12 +25,9 @@ from mininet.log import setLogLevel, info
 from mininet.link import TCLink, Link
 
 
-def virtual_network_function():
-    return None
-
-
 def topology():
-    "Create a network with some docker containers acting as hosts."
+    """Create a network with some docker containers acting as hosts.
+    """
 
     net = Containernet(controller=Controller)
 
@@ -44,18 +41,21 @@ def topology():
     info('*** Adding SFF\n')
     sff = net.addServiceFunctionForwarder('s1', cls=OVSSwitch)
 
-    info('*** Adding VNF\n')
-    vnf = net.addVirtualNetworkFunction('v1')
 
     info('*** Creating links\n')
-    for i in [dh1, dh2]:
-        net.addLink(i, sff)
+
+    for el in [dh1, dh2]:
+        net.addLink(el, sff)
+
+    info('*** Adding VNF\n')
+    vnf = net.addVirtualNetworkFunction('v1', switch=sff, amount_of_hosts=2)
+
 
     info('*** Starting network\n')
     net.start()
 
     net.ping([dh1, dh2])
-
+    print(sff.dpctl("show"))
     info('*** Running CLI\n')
     CLI(net)
 

@@ -301,33 +301,6 @@ class Mininet( object ):
         self.nameToNode[ name ] = sw
         return sw
 
-    def addServiceFunctionForwarder( self, name, cls=None, **params ):
-        """Add ServiceFunctionForwarder - just a real Switch for now
-               name: name of switch to add
-               cls: custom switch class/constructor (optional)
-               returns: added switch
-               side effect: increments listenPort ivar ."""
-        return self.addSwitch(name, cls, **params)
-
-    def addVirtualNetworkFunction( self, name, cls=None, custom_function=None, **params):
-        """Add VirtualNetworkFunction
-                name: name of function to add
-                cls: one of basic functions, for example:
-                    Switching: BNG, CG-NAT, routers.
-                    Tunnelling gateway elements: IPSec/SSL VPN gateways.
-                    Traffic analysis: DPI, QoE measurementI.
-                    Signalling: SBCs, IMS.
-                    Application-level optimisation: CDNs, load Balancers.
-                    Home routers and set top boxes.
-                    Mobile network nodes: HLR/HSS, MME, SGSN, GGSN/PDN-GW, RNC.
-                    Network-wide functions: AAA servers policy control, charging platforms.
-                    Security functions: firewalls, intrusion detection systems, virus scanners, spam protection.
-                custom_function: function, that's not presented in basic functions
-                params: parameters for function
-        """
-
-        return None
-
     def delSwitch( self, switch ):
         "Delete a switch"
         self.delNode( switch, nodes=self.switches )
@@ -1175,6 +1148,46 @@ class Containernet( Mininet ):
         for SAPswitch in self.SAPswitches:
             self.removeSAPNAT(self.SAPswitches[SAPswitch])
         info("\n")
+
+    def addServiceFunctionForwarder( self, name, cls=None, **params ):
+        """Add ServiceFunctionForwarder - just a real Switch for now
+               name: name of switch to add
+               cls: custom switch class/constructor (optional)
+               returns: added switch
+               side effect: increments listenPort ivar ."""
+        return self.addSwitch(name, cls, **params)
+
+    def addVirtualNetworkFunction( self, name, dimage="ubuntu:trusty", switch = OVSSwitch, amount_of_hosts=0, **params):
+        """Add VirtualNetworkFunction
+                name: name of function to add
+                dimage: docker image that represents
+                    custom vnf class/constructor, for example:
+                    Switching: BNG, CG-NAT, routers.
+                    Tunnelling gateway elements: IPSec/SSL VPN gateways.
+                    Traffic analysis: DPI, QoE measurementI.
+                    Signalling: SBCs, IMS.
+                    Application-level optimisation: CDNs, load Balancers.
+                    Home routers and set top boxes.
+                    Mobile network nodes: HLR/HSS, MME, SGSN, GGSN/PDN-GW, RNC.
+                    Network-wide functions: AAA servers policy control, charging platforms.
+                    Security functions: firewalls, intrusion detection systems, virus scanners, spam protection.
+                    By default it is set as ubuntu
+                custom_function: function, that's not presented in basic functions
+                params: parameters for function
+        """
+
+        #TODO - load some docker files and test this
+        vnf = self.addDocker(name, dimage=dimage, **params)
+        self.addLink(vnf, switch)
+        # redirecting traffic from hosts firstly to vnf
+        for i in range(1, amount_of_hosts+1):
+            switch.dpctl(f"add-flow s1 priority=200,\
+                         in_port={i},actions=output:3")
+        # redirecting traffic from vnf to original recipients
+        vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT')
+        vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT')
+        # self.cmd( 'iptables -P INPUT ACCEPT' )
+        return vnf
 
 
 

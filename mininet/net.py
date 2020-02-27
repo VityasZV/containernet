@@ -1157,7 +1157,7 @@ class Containernet( Mininet ):
                side effect: increments listenPort ivar ."""
         return self.addSwitch(name, cls, **params)
 
-    def addVirtualNetworkFunction( self, name, dimage="ubuntu:trusty", switch = OVSSwitch, amount_of_hosts=0, **params):
+    def addVirtualNetworkFunction( self, name, dimage="ubuntu:trusty", switch = OVSSwitch, **params):
         """Add VirtualNetworkFunction
                 name: name of function to add
                 dimage: docker image that represents
@@ -1179,13 +1179,6 @@ class Containernet( Mininet ):
         #TODO - load some docker files and test this
         vnf = self.addDocker(name, dimage=dimage, **params)
         self.addLink(vnf, switch)
-        # redirecting traffic from hosts firstly to vnf
-        for i in range(1, amount_of_hosts+1):
-            print(switch.dpctl("add-flow", f"priority=200,in_port={i},actions=output:3"))
-        # redirecting traffic from vnf to original recipients
-        print(vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT'))
-        print(vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT'))
-        # self.cmd( 'iptables -P INPUT ACCEPT' )
         return vnf
 
 

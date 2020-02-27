@@ -1181,9 +1181,9 @@ class Containernet( Mininet ):
         self.addLink(vnf, switch)
         # redirecting traffic from hosts firstly to vnf
         for i in range(1, amount_of_hosts+1):
-            print(switch.dpctl(*f"add-flow in_port={i} actions=output:3".split()))
+            print(switch.dpctl("add-flow", f"priority=200,in_port={i},actions=output:3"))
         # redirecting traffic from vnf to original recipients
-        print(vnf.cmd(*'iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT'.split()))
+        print(vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT'))
         print(vnf.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 ACCEPT'))
         # self.cmd( 'iptables -P INPUT ACCEPT' )
         return vnf

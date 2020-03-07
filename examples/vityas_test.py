@@ -48,21 +48,30 @@ def topology():
         net.addLink(el, sff)
 
     info('*** Adding VNF\n')
-    vnf = net.addVirtualNetworkFunction('v1', dimage="vityaszv/custom_container:latest", switch=sff)
+    vnf = net.addVirtualNetworkFunction('v1', dimage="vityaszv/custom_container:latest", switch=sff, ip='11.0.0.3')
 
 
     info('*** Starting network\n')
     net.start()
 
     # adding flows for redirecting traffic from dh1 dh2 to v1
-    for i in [dh1, dh2]:
-        print(sff.dpctl("add-flow", "priority=100,icmp,nw_src=11.0.0.0/24,actions=output:3"))
+    print(sff.dpctl("add-flow", "priority=100,in_port=1,actions=output:3"))
+    print(sff.dpctl("add-flow", "priority=100,in_port=2,actions=output:3"))
+
 
     # adding flows for transferring traffic from v1 to dh1 and dh2
-    print(dh1.IP())
     print(sff.dpctl("add-flow", "arp,actions=normal"))
-    print(sff.dpctl("add-flow", f"priority=100,icmp,in_port=3,nw_dst=11.0.0.1,actions=output:1"))
-    print(sff.dpctl("add-flow", f"priority=100,icmp,in_port=3,nw_dst=11.0.0.2,actions=output:2"))
+    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src=11.0.0.1,actions=output:2"))
+    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src=11.0.0.2,actions=output:1"))
+
+    # adding rules to dh1 and dh2
+    # -- forward rules
+    print(dh1.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
+    print(dh2.cmd('iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
+    # -- output rules
+    print(dh1.cmd('iptables -A OUTPUT -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
+    print(dh2.cmd('iptables -A OUTPUT -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
+
 
 
 # redirecting traffic from vnf to original recipients

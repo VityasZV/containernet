@@ -55,14 +55,24 @@ def topology():
     net.start()
 
     # adding flows for redirecting traffic from dh1 dh2 to v1
-    print(sff.dpctl("add-flow", "priority=100,in_port=1,actions=output:3"))
-    print(sff.dpctl("add-flow", "priority=100,in_port=2,actions=output:3"))
+    print(sff.dpctl("add-flow", "priority=60,in_port=1,actions=output:3"))
+    print(sff.dpctl("add-flow", "priority=60,in_port=2,actions=output:3"))
 
 
     # adding flows for transferring traffic from v1 to dh1 and dh2
     print(sff.dpctl("add-flow", "arp,actions=normal"))
-    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src=11.0.0.1,actions=output:2"))
-    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src=11.0.0.2,actions=output:1"))
+    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src={dh1.IP()},actions=output:2"))
+    print(sff.dpctl("add-flow", f"priority=50,udp,nw_src={dh2.IP()},actions=output:1"))
+
+    # changing mac dst for packets from dh1 to dh2, that redirected to vnf
+    print(sff.dpctl("add-flow", f"priority=60,icmp,nw_src={dh1.IP()},nw_dst={dh2.IP()},actions=mod_dl_dst:{vnf.MAC()}"))
+    # changing mac dst for packets from dh2 to dh1, that redirected to vnf
+    print(sff.dpctl("add-flow", f"priority=60,icmp,nw_src={dh2.IP()},nw_dst={dh1.IP()},actions=mod_dl_dst:{vnf.MAC()}"))
+
+    # returning needed macs to packets from vnf to dh1, dh2
+    print(sff.dpctl("add-flow", f"priority=50,udp,dl_dst={vnf.MAC()},nw_src=11.0.0.2,actions=mod_dl_dst:{dh1.MAC()}"))
+    print(sff.dpctl("add-flow", f"priority=50,udp,dl_src={vnf.MAC()},nw_src=11.0.0.1,actions=mod_dl_dst:{dh2.MAC()}"))
+
 
     # adding rules to dh1 and dh2
     # -- forward rules

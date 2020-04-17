@@ -26,18 +26,26 @@ from mininet.log import setLogLevel, info
 from mininet.link import TCLink, Link
 
 
-def rules_for_first_vnf(sff: OVSSwitch, vnf):
-    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+def rules_for_first_vnf(sff: OVSSwitch, vnf_f, vnf_l):
+    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{vnf_f.MAC()},output:3"))
+    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{vnf_l.MAC()},output:4"))
+    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{vnf_f.MAC()},output:3"))
+    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{vnf_l.MAC()},output:4"))
 
 
 def rules_from_vnf_to_hosts(sff: OVSSwitch, dh1, dh2):
-    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
-    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+    for i in (3, 4):
+        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+
+
+def rules_for_chainig(list_of_vnfs):
+    # print(vnf.cmd(f'iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
+    for v in list_of_vnfs:
+        print(v.cmd(f'iptables -A FORWARD -p icmp -s 11.0.0.1 -d 11.0.0.2 -o eth1 -j ACCEPT'))
+        print(v.cmd(f'iptables -A FORWARD -p icmp -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
 
 
 def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):
@@ -47,6 +55,8 @@ def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):
     for i in range(len(list_of_vnfs) - 1):
         net.addLink(list_of_vnfs[i], list_of_vnfs[i + 1])
     net.addLink(last, sff)
+    rules_for_chainig(list_of_vnfs)
+
 
 def topology():
     """Create a network with some docker containers acting as hosts.
@@ -84,7 +94,7 @@ def topology():
     print(sff.dpctl("add-flow", "arp,actions=normal"))
 
     # adding flows for redirecting traffic from dh1 dh2 to v1 - with changing mac_dst
-    rules_for_first_vnf(sff, vnf1)
+    rules_for_first_vnf(sff, vnf1, vnf3)
 
     # rules from packets from vmf to hosts
     rules_from_vnf_to_hosts(sff, dh1, dh2)

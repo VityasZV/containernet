@@ -16,6 +16,7 @@ This example shows how to create a simple network like this:
     [C0] - Controller
     SFF - Service Function Forwarder (just OVSSwitch right now)
     VNF - Virtual Network Function (an arbitrary virtual function that somehow handles traffic)
+    actual documentation stores at https://www.lucidchart.com/documents/edit/e71c5614-f991-4091-97ca-f18bdd5c5219/0_0?beaconFlowId=A019EEC6C933FCF3
 """
 
 from mininet.net import Containernet
@@ -24,6 +25,28 @@ from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 from mininet.link import TCLink, Link
 
+
+def rules_for_first_vnf(sff: OVSSwitch, vnf):
+    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+
+
+def rules_from_vnf_to_hosts(sff: OVSSwitch, dh1, dh2):
+    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+
+
+def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):
+    first, last = list_of_vnfs[0], list_of_vnfs[-1]
+    net.addLink(first, sff)
+    # other_vnfs = list_of_vnfs[1:-1]
+    for i in range(len(list_of_vnfs) - 1):
+        net.addLink(list_of_vnfs[i], list_of_vnfs[i + 1])
+    net.addLink(last, sff)
 
 def topology():
     """Create a network with some docker containers acting as hosts.
@@ -43,32 +66,28 @@ def topology():
     info('*** Adding SFF\n')
     sff = net.addServiceFunctionForwarder('s1', cls=OVSSwitch)
 
-
     info('*** Creating links\n')
 
     for el in [dh1, dh2]:
         net.addLink(el, sff)
 
-    info('*** Adding VNF\n')
-    vnf = net.addVirtualNetworkFunction('v1', dimage="vityaszv/custom_container:latest", switch=sff, ip='11.0.0.3')
+    info('*** Adding VNFs\n')
 
-
+    vnf1, vnf2, vnf3 = [
+        net.addVirtualNetworkFunction(f'v{i - 2}', dimage="vityaszv/custom_container:latest", switch=sff,
+                                      ip=f'11.0.0.{i}')
+        for i in range(3, 6)]
+    create_simple_chain([vnf1, vnf2, vnf3], sff, net)
     info('*** Starting network\n')
     net.start()
 
     print(sff.dpctl("add-flow", "arp,actions=normal"))
 
     # adding flows for redirecting traffic from dh1 dh2 to v1 - with changing mac_dst
-    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{vnf.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{vnf.MAC()},output:3"))
+    rules_for_first_vnf(sff, vnf1)
 
     # rules from packets from vmf to hosts
-    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-    print(sff.dpctl("add-flow", f"icmp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
-    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-    print(sff.dpctl("add-flow", f"udp,in_port=3,nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+    rules_from_vnf_to_hosts(sff, dh1, dh2)
 
     """
         thats iptables rules, possibly unneeded
@@ -84,25 +103,25 @@ def topology():
     """
            thats iptables rules, possibly unneeded
     """
-# # redirecting traffic from vnf to original recipients
-#
-#     # default is to drop packets
-#     print(vnf.cmd('iptables -P INPUT DROP'))
-#     print(vnf.cmd('iptables -P FORWARD DROP'))
-#     print(vnf.cmd('iptables -P OUTPUT DROP'))
-#
-#     # loopback interface is permitted
-#     print(vnf.cmd('iptables -A INPUT -i lo -j ACCEPT'))
-#     print(vnf.cmd('iptables -A OUTPUT -o lo -j ACCEPT'))
-#
-#     # accepting packets from switch
-#     print(vnf.cmd('iptables -A INPUT -i eth0 -s 11.0.0.0/24 -j ACCEPT'))
-#
-#     print(vnf.cmd('iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT'))
-#
-#     # redirecting traffic to switch
-#     print(vnf.cmd('iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
-# -------------------------------------------------------------------------- #
+    # # redirecting traffic from vnf to original recipients
+    #
+    #     # default is to drop packets
+    #     print(vnf.cmd('iptables -P INPUT DROP'))
+    #     print(vnf.cmd('iptables -P FORWARD DROP'))
+    #     print(vnf.cmd('iptables -P OUTPUT DROP'))
+    #
+    #     # loopback interface is permitted
+    #     print(vnf.cmd('iptables -A INPUT -i lo -j ACCEPT'))
+    #     print(vnf.cmd('iptables -A OUTPUT -o lo -j ACCEPT'))
+    #
+    #     # accepting packets from switch
+    #     print(vnf.cmd('iptables -A INPUT -i eth0 -s 11.0.0.0/24 -j ACCEPT'))
+    #
+    #     print(vnf.cmd('iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT'))
+    #
+    #     # redirecting traffic to switch
+    #     print(vnf.cmd('iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
+    # -------------------------------------------------------------------------- #
 
     print(sff.dpctl("show"))
     # net.ping([dh1, dh2])

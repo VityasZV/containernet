@@ -1178,7 +1178,6 @@ class Containernet( Mininet ):
 
         #TODO - load some docker files and test this
         vnf = self.addDocker(name, dimage=dimage, **params)
-        self.addLink(vnf, switch)
         return vnf
 
 

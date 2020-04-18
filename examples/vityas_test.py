@@ -44,8 +44,12 @@ def rules_from_vnf_to_hosts(sff: OVSSwitch, dh1, dh2):
 def rules_for_chainig(list_of_vnfs):
     # print(vnf.cmd(f'iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
     for v in list_of_vnfs:
-        print(v.cmd(f'iptables -A FORWARD -p icmp -s 11.0.0.1 -d 11.0.0.2 -o eth1 -j ACCEPT'))
-        print(v.cmd(f'iptables -A FORWARD -p icmp -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
+        print(v.cmd(f'echo 1 > /proc/sys/net/ipv4/ip_forward'))
+        print(v.cmd(f'iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -i {v.name}-eth0 -o {v.name}-eth1 -j ACCEPT'))
+        print(v.cmd(f'iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -i {v.name}-eth0 -o {v.name}-eth0 -j ACCEPT'))
+        #setting brctl on vnf
+        print(v.cmd(f'brctl addbr test'))
+        print(v.cmd(f'brctl addif test {v.name}-eth0 {v.name}-eth1'))
 
 
 def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):

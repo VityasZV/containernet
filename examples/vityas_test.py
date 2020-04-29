@@ -39,9 +39,15 @@ def rules_from_vnf_to_hosts(sff: OVSSwitch, dh1, dh2):
         print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh2.IP()},actions=output:2"))
         print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh1.IP()},actions=output:1"))
         print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh2.IP()},actions=output:2"))
+        # print(sff.dpctl("add-flow", f"table=1,nsh_mdtype=1,actions=decap(packet_type(ns=0,type=0x894f))"))
+        # print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+        # print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        # print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+        # print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        # print(sff.dpctl("add-flow", f"table=1,nsh_mdtype=1,actions=decap(packet_type(ns=0,type=0x894f))"))
 
 
-def rules_for_chainig(list_of_vnfs):
+def rules_for_chaining(list_of_vnfs, list_of_sffs):
     # print(vnf.cmd(f'iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
     for v in list_of_vnfs:
         # setting brctl on vnf
@@ -51,22 +57,39 @@ def rules_for_chainig(list_of_vnfs):
         print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-iptables=0'))
         print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-ip6tables=0'))
         print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-arptables=0'))
-        print(v.cmd(f'ifconfig test up')) #activating bridge
-        print(v.cmd(f'ifconfig eth0 down')) #activating bridge
+        print(v.cmd(f'ifconfig test up'))  # activating bridge
+        print(v.cmd(f'ifconfig eth0 down'))  # activating bridge
         # print(v.cmd(f'iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -i {v.name}-eth0 -o {v.name}-eth1 -j ACCEPT'))
         # print(v.cmd(f'iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -i {v.name}-eth0 -o {v.name}-eth0 -j ACCEPT'))
         print(v.cmd(f'iptables -A FORWARD -o test -j ACCEPT'))
 
 
+def rules_for_mac_chaining(list_of_sffs, list_of_vnfs):
+    i = 1
+    for s in list_of_sffs:
+        print(s.dpctl("add-flow", f"icmp,in_port=1,actions=output:2"))
+        print(s.dpctl("add-flow", f"icmp,in_port=2,actions=output:1"))
+        print(s.dpctl("add-flow", f"udp,in_port=1,actions=output:2"))
+        print(s.dpctl("add-flow", f"udp,in_port=2,actions=output:2"))
+        # print(s.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},output:2"))
+        # print(s.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},output:1"))
+        # print(s.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},output:2"))
+        # print(s.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},output:2"))
+        i += 1
 
-def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):
+
+
+def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet, list_of_sffs):
     first, last = list_of_vnfs[0], list_of_vnfs[-1]
     net.addLink(first, sff)
+
     # other_vnfs = list_of_vnfs[1:-1]
     for i in range(len(list_of_vnfs) - 1):
-        net.addLink(list_of_vnfs[i], list_of_vnfs[i + 1])
+        net.addLink(list_of_vnfs[i], list_of_sffs[i])
+        net.addLink(list_of_sffs[i], list_of_vnfs[i + 1])
+
     net.addLink(last, sff)
-    rules_for_chainig(list_of_vnfs)
+    rules_for_chaining(list_of_vnfs, list_of_sffs)
 
 
 def topology():
@@ -98,7 +121,12 @@ def topology():
         net.addVirtualNetworkFunction(f'v{i - 2}', dimage="vityaszv/custom_container:latest", switch=sff,
                                       ip=f'11.0.0.{i}')
         for i in range(3, 6)]
-    create_simple_chain([vnf1, vnf2, vnf3], sff, net)
+    v_amount = 3
+
+    list_of_sffs = [net.addServiceFunctionForwarder(f's{i}', cls=OVSSwitch) for i in range(2, v_amount + 1)]
+    print(f'size of sffs: {len(list_of_sffs)}')
+
+    create_simple_chain([vnf1, vnf2, vnf3], sff, net, list_of_sffs)
     info('*** Starting network\n')
     net.start()
 
@@ -109,6 +137,9 @@ def topology():
 
     # rules from packets from vmf to hosts
     rules_from_vnf_to_hosts(sff, dh1, dh2)
+
+    # rules for mac chaining
+    rules_for_mac_chaining(list_of_sffs, [vnf1, vnf2, vnf3])
 
     """
         thats iptables rules, possibly unneeded

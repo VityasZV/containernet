@@ -27,29 +27,36 @@ from mininet.link import TCLink, Link
 
 
 def rules_for_first_vnf(sff: OVSSwitch, vnf_f, vnf_l):
-    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{vnf_f.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{vnf_l.MAC()},output:4"))
-    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{vnf_f.MAC()},output:3"))
-    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{vnf_l.MAC()},output:4"))
+    print(sff.dpctl("add-flow", f"icmp,in_port=1,actions=output:3"))
+    print(sff.dpctl("add-flow", f"icmp,in_port=2,actions=output:4"))
+    print(sff.dpctl("add-flow", f"udp,in_port=1,actions=output:3"))
+    print(sff.dpctl("add-flow", f"udp,in_port=2,actions=output:4"))
 
 
 def rules_from_vnf_to_hosts(sff: OVSSwitch, dh1, dh2):
     for i in (3, 4):
-        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
-        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh1.IP()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
-        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh2.IP()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh1.IP()},actions=output:1"))
+        print(sff.dpctl("add-flow", f"icmp,in_port={i},nw_dst={dh2.IP()},actions=output:2"))
+        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh1.IP()},actions=output:1"))
+        print(sff.dpctl("add-flow", f"udp,in_port={i},nw_dst={dh2.IP()},actions=output:2"))
 
 
 def rules_for_chainig(list_of_vnfs):
     # print(vnf.cmd(f'iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
     for v in list_of_vnfs:
-        print(v.cmd(f'echo 1 > /proc/sys/net/ipv4/ip_forward'))
-        print(v.cmd(f'iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -i {v.name}-eth0 -o {v.name}-eth1 -j ACCEPT'))
-        print(v.cmd(f'iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -i {v.name}-eth0 -o {v.name}-eth0 -j ACCEPT'))
-        #setting brctl on vnf
+        # setting brctl on vnf
         print(v.cmd(f'brctl addbr test'))
         print(v.cmd(f'brctl addif test {v.name}-eth0 {v.name}-eth1'))
+        print(v.cmd(f'echo 1 > /proc/sys/net/ipv4/ip_forward'))
+        print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-iptables=0'))
+        print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-ip6tables=0'))
+        print(v.cmd(f'sysctl -w net.bridge.bridge-nf-call-arptables=0'))
+        print(v.cmd(f'ifconfig test up')) #activating bridge
+        print(v.cmd(f'ifconfig eth0 down')) #activating bridge
+        # print(v.cmd(f'iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -i {v.name}-eth0 -o {v.name}-eth1 -j ACCEPT'))
+        # print(v.cmd(f'iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -i {v.name}-eth0 -o {v.name}-eth0 -j ACCEPT'))
+        print(v.cmd(f'iptables -A FORWARD -o test -j ACCEPT'))
+
 
 
 def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet):

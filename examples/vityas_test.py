@@ -23,6 +23,9 @@ from mininet.net import Containernet
 from mininet.node import Controller, Docker, OVSSwitch
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
+from datetime import datetime
+import time
+
 from mininet.link import TCLink, Link
 
 
@@ -95,6 +98,7 @@ def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet, list_of
 def topology():
     """Create a network with some docker containers acting as hosts.
     """
+    start_time = datetime.now()
 
     net = Containernet(controller=Controller)
 
@@ -177,6 +181,8 @@ def topology():
 
     print(sff.dpctl("show"))
     # net.ping([dh1, dh2])
+    print(f'time for initialization = {datetime.now() - start_time}')
+
     info('*** Running CLI\n')
     CLI(net)
 

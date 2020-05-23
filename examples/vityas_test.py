@@ -67,17 +67,27 @@ def rules_for_chaining(list_of_vnfs, list_of_sffs):
         print(v.cmd(f'iptables -A FORWARD -o test -j ACCEPT'))
 
 
-def rules_for_mac_chaining(list_of_sffs, list_of_vnfs):
+def rules_for_mac_chaining(list_of_sffs, list_of_vnfs, dh1, dh2):
     i = 1
     for s in list_of_sffs:
         print(s.dpctl("add-flow", f"icmp,in_port=1,actions=output:2"))
         print(s.dpctl("add-flow", f"icmp,in_port=2,actions=output:1"))
         print(s.dpctl("add-flow", f"udp,in_port=1,actions=output:2"))
         print(s.dpctl("add-flow", f"udp,in_port=2,actions=output:2"))
-        # print(s.dpctl("add-flow", f"icmp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},output:2"))
-        # print(s.dpctl("add-flow", f"icmp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},output:1"))
-        # print(s.dpctl("add-flow", f"udp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},output:2"))
-        # print(s.dpctl("add-flow", f"udp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},output:2"))
+
+
+        '''
+            правила ниже работают для мак чейнинга при этом контейнернет глючит и не даёт выполниться правилам с resubmit - при том что из текстового файла напрямую в xterm свитчи настраиваются нормально
+        '''
+        # print(s.dpctl("add-flow", f"table=0,icmp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},resubmit:(,1)"))
+        # print(s.dpctl("add-flow", f"table=0,icmp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},resubmit:(,1)"))
+        # print(s.dpctl("add-flow", f"table=0,udp,in_port=1,actions=mod_dl_dst:{list_of_vnfs[i].MAC()},resubmit:(,1)"))
+        # print(s.dpctl("add-flow", f"table=0,udp,in_port=2,actions=mod_dl_dst:{list_of_vnfs[i - 1].MAC()},resubmit:(,1)"))
+        #
+        # print(s.dpctl("add-flow", f"table=1,icmp,dl_dst={list_of_vnfs[i].MAC()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        # print(s.dpctl("add-flow", f"table=1,icmp,dl_dst:{list_of_vnfs[i - 1].MAC()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
+        # print(s.dpctl("add-flow", f"table=1,udp,dl_dst:{list_of_vnfs[i].MAC()},actions=mod_dl_dst:{dh2.MAC()},output:2"))
+        # print(s.dpctl("add-flow", f"table=1,udp,dl_dst:{list_of_vnfs[i - 1].MAC()},actions=mod_dl_dst:{dh1.MAC()},output:1"))
         i += 1
 
 
@@ -143,7 +153,7 @@ def topology():
     rules_from_vnf_to_hosts(sff, dh1, dh2)
 
     # rules for mac chaining
-    rules_for_mac_chaining(list_of_sffs, [vnf1, vnf2, vnf3])
+    rules_for_mac_chaining(list_of_sffs, [vnf1, vnf2, vnf3], dh1, dh2)
 
     """
         thats iptables rules, possibly unneeded

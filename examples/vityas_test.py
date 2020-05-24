@@ -25,6 +25,8 @@ from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 from datetime import datetime
 import time
+import csv
+
 
 from mininet.link import TCLink, Link
 
@@ -92,112 +94,135 @@ def rules_for_mac_chaining(list_of_sffs, list_of_vnfs, dh1, dh2):
 
 
 
-def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet, list_of_sffs):
+def create_simple_chain(list_of_vnfs, sff: OVSSwitch, net: Containernet, list_of_sffs, delay):
     first, last = list_of_vnfs[0], list_of_vnfs[-1]
-    net.addLink(first, sff)
+    net.addLink(first, sff, cls=TCLink, delay=delay)
 
     # other_vnfs = list_of_vnfs[1:-1]
     for i in range(len(list_of_vnfs) - 1):
         net.addLink(list_of_vnfs[i], list_of_sffs[i])
         net.addLink(list_of_sffs[i], list_of_vnfs[i + 1])
 
-    net.addLink(last, sff)
+    net.addLink(last, sff, cls=TCLink, delay=delay)
     rules_for_chaining(list_of_vnfs, list_of_sffs)
 
 
 def topology():
     """Create a network with some docker containers acting as hosts.
     """
-    start_time = datetime.now()
+    delay_list = ['5ms', '10ms', '20ms', '40ms', '60ms', '100ms']
+    with open('test_increasing_delay.csv', 'w') as csvfile:
+        fieldnames = ['delay', 'startup', 'vnf_deployment', 'deletion', 'ping']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for delay in delay_list:
+            start_time = datetime.now()
 
-    net = Containernet(controller=Controller)
+            net = Containernet(controller=Controller)
 
-    # info('*** Adding controller\n')
-    # net.addController('c0')
+            # info('*** Adding controller\n')
+            # net.addController('c0')
 
-    info('*** Adding docker containers (as hosts)\n')
-    # dh3 = [net.addHost(f"dh{3}", ip=f'11.0.0.{4}', cls=Docker,
-    #                         dimage='devrt/container-firewall:latest', cpu_shares=20)]
-    dh1, dh2 = [net.addHost(f"dh{i}", ip=f'11.0.0.{i}', cls=Docker,
-                            dimage='vityaszv/custom_container:latest', cpu_shares=20) for i in range(1, 3)]
-    amount_of_hosts = 2
-    info('*** Adding SFF\n')
-    sff = net.addServiceFunctionForwarder('s1', cls=OVSSwitch)
+            info('*** Adding docker containers (as hosts)\n')
+            # dh3 = [net.addHost(f"dh{3}", ip=f'11.0.0.{4}', cls=Docker,
+            #                         dimage='devrt/container-firewall:latest', cpu_shares=20)]
+            dh1, dh2 = [net.addHost(f"dh{i}", ip=f'11.0.0.{i}', cls=Docker,
+                                    dimage='vityaszv/custom_container:latest', cpu_shares=20) for i in range(1, 3)]
+            amount_of_hosts = 2
+            info('*** Adding SFF\n')
+            sff = net.addServiceFunctionForwarder('s1', cls=OVSSwitch)
 
-    info('*** Creating links\n')
+            info('*** Creating links\n')
 
-    for el in [dh1, dh2]:
-        net.addLink(el, sff)
+            for el in [dh1, dh2]:
+                net.addLink(el, sff, cls=TCLink, delay=delay)
 
-    info('*** Adding VNFs\n')
+            info('*** Adding VNFs\n')
 
-    vnf1, vnf2, vnf3 = [
-        net.addVirtualNetworkFunction(f'v{i - 2}', dimage="vityaszv/custom_container:latest", switch=sff,
-                                      ip=f'11.0.0.{i}')
-        for i in range(3, 6)]
-    v_amount = 3
 
-    list_of_sffs = [net.addServiceFunctionForwarder(f's{i}', cls=OVSSwitch) for i in range(2, v_amount + 1)]
-    print(f'size of sffs: {len(list_of_sffs)}')
+            vnf_deploy_start = datetime.now()
+            vnf1, vnf2, vnf3 = [
+                net.addVirtualNetworkFunction(f'v{i - 2}', dimage="vityaszv/custom_container:latest", switch=sff,
+                                              ip=f'11.0.0.{i}')
+                for i in range(3, 6)]
+            v_amount = 3
+            vnf_deploy_finish = datetime.now()
 
-    create_simple_chain([vnf1, vnf2, vnf3], sff, net, list_of_sffs)
-    info('*** Starting network\n')
-    net.start()
 
-    print(sff.dpctl("add-flow", "arp,actions=normal"))
+            list_of_sffs = [net.addServiceFunctionForwarder(f's{i}', cls=OVSSwitch) for i in range(2, v_amount + 1)]
+            print(f'size of sffs: {len(list_of_sffs)}')
 
-    # adding flows for redirecting traffic from dh1 dh2 to v1 - with changing mac_dst
-    rules_for_first_vnf(sff, vnf1, vnf3)
+            create_simple_chain([vnf1, vnf2, vnf3], sff, net, list_of_sffs, delay)
+            info('*** Starting network\n')
+            net.start()
 
-    # rules from packets from vmf to hosts
-    rules_from_vnf_to_hosts(sff, dh1, dh2)
+            print(sff.dpctl("add-flow", "arp,actions=normal"))
 
-    # rules for mac chaining
-    rules_for_mac_chaining(list_of_sffs, [vnf1, vnf2, vnf3], dh1, dh2)
+            # adding flows for redirecting traffic from dh1 dh2 to v1 - with changing mac_dst
+            rules_for_first_vnf(sff, vnf1, vnf3)
 
-    """
-        thats iptables rules, possibly unneeded
-    """
-    # # adding rules to dh1 and dh2
-    # # -- forward rule
-    # print(dh1.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
-    # print(dh2.cmd('iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
-    # # -- output rules
-    # print(dh1.cmd('iptables -A OUTPUT -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
-    # print(dh2.cmd('iptables -A OUTPUT -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
+            # rules from packets from vmf to hosts
+            rules_from_vnf_to_hosts(sff, dh1, dh2)
 
-    """
-           thats iptables rules, possibly unneeded
-    """
-    # # redirecting traffic from vnf to original recipients
-    #
-    #     # default is to drop packets
-    #     print(vnf.cmd('iptables -P INPUT DROP'))
-    #     print(vnf.cmd('iptables -P FORWARD DROP'))
-    #     print(vnf.cmd('iptables -P OUTPUT DROP'))
-    #
-    #     # loopback interface is permitted
-    #     print(vnf.cmd('iptables -A INPUT -i lo -j ACCEPT'))
-    #     print(vnf.cmd('iptables -A OUTPUT -o lo -j ACCEPT'))
-    #
-    #     # accepting packets from switch
-    #     print(vnf.cmd('iptables -A INPUT -i eth0 -s 11.0.0.0/24 -j ACCEPT'))
-    #
-    #     print(vnf.cmd('iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT'))
-    #
-    #     # redirecting traffic to switch
-    #     print(vnf.cmd('iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
-    # -------------------------------------------------------------------------- #
+            # rules for mac chaining
+            rules_for_mac_chaining(list_of_sffs, [vnf1, vnf2, vnf3], dh1, dh2)
 
-    print(sff.dpctl("show"))
-    # net.ping([dh1, dh2])
-    print(f'time for initialization = {datetime.now() - start_time}')
+            """
+                thats iptables rules, possibly unneeded
+            """
+            # # adding rules to dh1 and dh2
+            # # -- forward rule
+            # print(dh1.cmd('iptables -A FORWARD -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
+            # print(dh2.cmd('iptables -A FORWARD -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
+            # # -- output rules
+            # print(dh1.cmd('iptables -A OUTPUT -s 11.0.0.1 -d 11.0.0.2 -o eth0 -j ACCEPT'))
+            # print(dh2.cmd('iptables -A OUTPUT -s 11.0.0.2 -d 11.0.0.1 -o eth0 -j ACCEPT'))
 
-    info('*** Running CLI\n')
-    CLI(net)
+            """
+                   thats iptables rules, possibly unneeded
+            """
+            # # redirecting traffic from vnf to original recipients
+            #
+            #     # default is to drop packets
+            #     print(vnf.cmd('iptables -P INPUT DROP'))
+            #     print(vnf.cmd('iptables -P FORWARD DROP'))
+            #     print(vnf.cmd('iptables -P OUTPUT DROP'))
+            #
+            #     # loopback interface is permitted
+            #     print(vnf.cmd('iptables -A INPUT -i lo -j ACCEPT'))
+            #     print(vnf.cmd('iptables -A OUTPUT -o lo -j ACCEPT'))
+            #
+            #     # accepting packets from switch
+            #     print(vnf.cmd('iptables -A INPUT -i eth0 -s 11.0.0.0/24 -j ACCEPT'))
+            #
+            #     print(vnf.cmd('iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT'))
+            #
+            #     # redirecting traffic to switch
+            #     print(vnf.cmd('iptables -A OUTPUT -s 11.0.0.0/24 -d 11.0.0.0/24 -o eth0 -j ACCEPT'))
+            # -------------------------------------------------------------------------- #
 
-    info('*** Stopping network')
-    net.stop()
+            print(sff.dpctl("show"))
+            # info('*** Running CLI\n')
+            # CLI(net)
+            start_time_finish = datetime.now()
+
+            ping_start = datetime.now()
+            net.ping([dh1, dh2])
+            net.ping([dh2, dh1])
+            ping_stop = datetime.now()
+
+            info('*** Stopping network')
+            stop_time_start = datetime.now()
+            net.stop()
+            stop_time_finish = datetime.now()
+            writer.writerow({
+                'delay': delay,
+                'startup': start_time_finish - start_time,
+                'vnf_deployment': vnf_deploy_finish - vnf_deploy_start,
+                'deletion': stop_time_finish - stop_time_start,
+                'ping': ping_stop - ping_start
+            })
+            csvfile.flush()
 
 
 if __name__ == '__main__':

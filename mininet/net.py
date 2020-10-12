@@ -1149,6 +1149,37 @@ class Containernet( Mininet ):
             self.removeSAPNAT(self.SAPswitches[SAPswitch])
         info("\n")
 
+    def addServiceFunctionForwarder( self, name, cls=None, **params ):
+        """Add ServiceFunctionForwarder - just a real Switch for now
+               name: name of switch to add
+               cls: custom switch class/constructor (optional)
+               returns: added switch
+               side effect: increments listenPort ivar ."""
+        return self.addSwitch(name, cls, **params)
+
+    def addVirtualNetworkFunction( self, name, dimage="ubuntu:trusty", switch = OVSSwitch, **params):
+        """Add VirtualNetworkFunction
+                name: name of function to add
+                dimage: docker image that represents
+                    custom vnf class/constructor, for example:
+                    Switching: BNG, CG-NAT, routers.
+                    Tunnelling gateway elements: IPSec/SSL VPN gateways.
+                    Traffic analysis: DPI, QoE measurementI.
+                    Signalling: SBCs, IMS.
+                    Application-level optimisation: CDNs, load Balancers.
+                    Home routers and set top boxes.
+                    Mobile network nodes: HLR/HSS, MME, SGSN, GGSN/PDN-GW, RNC.
+                    Network-wide functions: AAA servers policy control, charging platforms.
+                    Security functions: firewalls, intrusion detection systems, virus scanners, spam protection.
+                    By default it is set as ubuntu
+                custom_function: function, that's not presented in basic functions
+                params: parameters for function
+        """
+
+        #TODO - load some docker files and test this
+        vnf = self.addDocker(name, dimage=dimage, **params)
+        return vnf
+
 
 
 class MininetWithControlNet( Mininet ):
